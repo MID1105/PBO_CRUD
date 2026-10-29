@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CRUD User - Konsep PBO</title>
+<style>
+  *{box-sizing:border-box}
+  body{font-family:system-ui,sans-serif;margin:0;background:#f3f4f6;color:#1f2937}
+  nav{background:#1e3a8a;color:#fff;padding:12px 20px;display:flex;gap:12px;align-items:center}
+  nav b{margin-right:auto}
+  nav button{background:transparent;border:1px solid #fff8;color:#fff}
+  main{max-width:820px;margin:24px auto;padding:0 16px}
+  section{background:#fff;padding:20px;border-radius:10px;box-shadow:0 1px 4px #0002}
+  h2{margin-top:0}
+  input,select{width:100%;padding:8px;margin:4px 0 12px;border:1px solid #cbd5e1;border-radius:6px}
+  button{padding:8px 14px;border:0;border-radius:6px;background:#2563eb;color:#fff;cursor:pointer}
+  button.red{background:#dc2626} button.gray{background:#64748b}
+  table{width:100%;border-collapse:collapse;margin-top:12px}
+  th,td{padding:8px;border-bottom:1px solid #e5e7eb;text-align:left;font-size:14px}
+  th{background:#f1f5f9}
+  .badge{padding:2px 8px;border-radius:10px;font-size:12px;color:#fff}
+  .admin{background:#dc2626}.editor{background:#d97706}.member{background:#16a34a}
+  #login{max-width:360px;margin:60px auto}
+  .err{color:#dc2626;font-size:14px}
+  #formBox{background:#f8fafc;padding:12px;border-radius:8px;margin-top:12px}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+</style>
+</head>
+<body>
+
+<nav id="nav" hidden>
+  <b>CRUD PBO</b>
+  <button onclick="show('users')">Daftar User</button>
+  <button onclick="show('profile')">Profile</button>
+  <button onclick="logout()">Logout</button>
+</nav>
+
+<main>
+  <!-- HALAMAN 1: LOGIN -->
+  <section id="page-login">
+    <div id="login">
+      <h2>Login</h2>
+      <form id="loginForm">
+        <label>Email</label><input type="email" id="lemail" required>
+        <label>Password</label><input type="password" id="lpass" required>
+        <p class="err" id="lerr"></p>
+        <button style="width:100%">Masuk</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- HALAMAN 2: TABEL USER -->
+  <section id="page-users" hidden>
+    <h2>Daftar User</h2>
+    <div id="toolbar"></div>
+    <div id="formBox" hidden>
+      <form id="uform">
+        <input type="hidden" id="fid">
+        <div class="row">
+          <div><label>Nama</label><input id="fnama" required></div>
+          <div><label>Email</label><input type="email" id="femail" required></div>
+          <div><label>Password</label><input id="fpass" required></div>
+          <div><label>Role</label>
+            <select id="frole">
+              <option value="member">Member</option>
+              <option value="editor">Editor</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+        </div>
+        <p class="err" id="ferr"></p>
+        <button>Simpan</button>
+        <button type="button" class="gray" onclick="$('#formBox').hidden=true">Batal</button>
+      </form>
+    </div>
+    <table>
+      <thead><tr><th>#</th><th>Nama</th><th>Email</th><th>Role</th><th>Aksi</th></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </section>
+
+  <!-- HALAMAN 3: PROFILE -->
+  <section id="page-profile" hidden>
+    <h2>Profile Saya</h2>
+    <div id="profInfo"></div>
+    <hr>
+    <h3>Ubah Data</h3>
+    <form id="pform">
+      <label>Nama</label><input id="pnama" required>
+      <label>Password baru</label><input id="ppass" required>
+      <button>Simpan Perubahan</button>
+      <span id="pmsg" style="color:#16a34a"></span>
+    </form>
+  </section>
+</main>
+
+<script>
+/* ===================== MODEL (PEWARISAN) ===================== */
+// Kelas induk (superclass)
+class Pengguna {
+  constructor({ id, nama, email, password, role }) {
+    this.id = id; this.nama = nama; this.email = email;
+    this.password = password; this.role = role;
+  }
+  get peran() { return "Pengguna"; }              // akan di-override
+  hakAkses() { return ["lihat"]; }                // akan di-override
+  bisa(aksi) { return this.hakAkses().includes(aksi); }
+  deskripsi() { return `${this.nama} adalah ${this.peran}`; }
+  toJSON() {
+    return { id: this.id, nama: this.nama, email: this.email,
+             password: this.password, role: this.role };
+  }
+}
+
+// Kelas anak (subclass) mewarisi Pengguna
+class Admin extends Pengguna {
+  get peran() { return "Admin"; }
+  hakAkses() { return ["lihat", "tambah", "ubah", "hapus", "role"]; }
+  deskripsi() { return `${super.deskripsi()} dengan kontrol penuh sistem`; }
+}
+class Editor extends Pengguna {
+  get peran() { return "Editor"; }
+  hakAkses() { return [...super.hakAkses(), "tambah", "ubah"]; }
+  deskripsi() { return `${super.deskripsi()} yang dapat menambah & mengubah data`; }
+}
+class Member extends Pengguna {
+  get peran() { return "Member"; }
+  // hakAkses() diwarisi apa adanya dari Pengguna (hanya "lihat")
+  deskripsi() { return `${super.deskripsi()} dengan akses baca saja`; }
+}
+
+/* ============ POLIMORFISME: Factory + pemanggilan method ============
+   Satu variabel bertipe Pengguna bisa berisi Admin/Editor/Member,
+   dan method yang sama (bisa(), peran, deskripsi()) berperilaku berbeda. */
+const KELAS = { admin: Admin, editor: Editor, member: Member };
+const buatPengguna = d => new (KELAS[d.role] || Member)(d);
+
+/* ===================== REPOSITORY (localStorage) ===================== */
+class UserRepo {
+  constructor(key = "pbo_users") {
+    this.key = key;
+    if (!localStorage.getItem(key)) this.simpan([
+      new Admin({ id: 1, nama: "Budi Admin", email: "admin@pbo.id", password: "admin123", role: "admin" }),
+      new Editor({ id: 2, nama: "Sari Editor", email: "editor@pbo.id", password: "editor123", role: "editor" }),
+      new Member({ id: 3, nama: "Andi Member", email: "member@pbo.id", password: "member123", role: "member" })
+    ]);
+  }
+  semua() { return JSON.parse(localStorage.getItem(this.key)).map(buatPengguna); }
+  simpan(list) { localStorage.setItem(this.key, JSON.stringify(list)); }
+  cari(id) { return this.semua().find(u => u.id == id); }
+  cariEmail(e) { return this.semua().find(u => u.email === e); }
+  tambah(d) {
+    const list = this.semua();
+    d.id = Math.max(0, ...list.map(u => u.id)) + 1;
+    list.push(buatPengguna(d)); this.simpan(list);
+  }
+  ubah(id, d) {
+    this.simpan(this.semua().map(u => u.id == id ? buatPengguna({ ...u.toJSON(), ...d }) : u));
+  }
+  hapus(id) { this.simpan(this.semua().filter(u => u.id != id)); }
+}
+
+/* ===================== CONTROLLER / UI ===================== */
+const repo = new UserRepo();
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+let me = repo.cari(localStorage.getItem("pbo_session"));
+
+function show(p) {
+  if (!me) p = "login";
+  document.querySelectorAll("main > section").forEach(s => s.hidden = s.id !== "page-" + p);
+  $("#nav").hidden = !me;
+  if (p === "users") renderUsers();
+  if (p === "profile") renderProfile();
+}
+function logout() { localStorage.removeItem("pbo_session"); me = null; show("login"); }
+
+/* ---- Login ---- */
+$("#loginForm").onsubmit = e => {
+  e.preventDefault();
+  const u = repo.cariEmail($("#lemail").value.trim());
+  if (!u || u.password !== $("#lpass").value) { $("#lerr").textContent = "Email atau password salah."; return; }
+  me = u; localStorage.setItem("pbo_session", u.id);
+  $("#lerr").textContent = ""; $("#loginForm").reset(); show("users");
+};
+
+/* ---- Tabel (Read, Delete) ---- */
+function renderUsers() {
+  $("#toolbar").innerHTML = `<small>${esc(me.deskripsi())}</small><br>` +
+    (me.bisa("tambah") ? `<button onclick="formUser()" style="margin-top:8px">+ Tambah User</button>` : "");
+  $("#tbody").innerHTML = repo.semua().map((u, i) => `
+    <tr>
+      <td>${i + 1}</td><td>${esc(u.nama)}</td><td>${esc(u.email)}</td>
+      <td><span class="badge ${esc(u.role)}">${esc(u.peran)}</span></td>
+      <td>
+        ${me.bisa("ubah") ? `<button onclick="formUser(${u.id})">Edit</button>` : ""}
+        ${me.bisa("hapus") && u.id !== me.id ? `<button class="red" onclick="hapusUser(${u.id})">Hapus</button>` : ""}
+        ${!me.bisa("ubah") ? "<small>-</small>" : ""}
+      </td>
+    </tr>`).join("");
+}
+function hapusUser(id) {
+  if (confirm("Hapus user ini?")) { repo.hapus(id); renderUsers(); }
+}
+
+/* ---- Form (Create, Update) ---- */
+function formUser(id) {
+  const u = id ? repo.cari(id) : null;
+  $("#formBox").hidden = false; $("#ferr").textContent = "";
+  $("#fid").value = u ? u.id : "";
+  $("#fnama").value = u ? u.nama : "";
+  $("#femail").value = u ? u.email : "";
+  $("#fpass").value = u ? u.password : "";
+  $("#frole").value = u ? u.role : "member";
+  $("#frole").disabled = !me.bisa("role");   // hanya Admin boleh atur role
+}
+$("#uform").onsubmit = e => {
+  e.preventDefault();
+  const id = $("#fid").value;
+  const data = { nama: $("#fnama").value.trim(), email: $("#femail").value.trim(), password: $("#fpass").value };
+  const dup = repo.cariEmail(data.email);
+  if (dup && dup.id != id) { $("#ferr").textContent = "Email sudah dipakai."; return; }
+  if (id) {
+    if (me.bisa("role")) data.role = $("#frole").value;
+    repo.ubah(id, data);
+  } else {
+    data.role = me.bisa("role") ? $("#frole").value : "member";
+    repo.tambah(data);
+  }
+  $("#formBox").hidden = true; renderUsers();
+};
+
+/* ---- Profile ---- */
+function renderProfile() {
+  me = repo.cari(me.id);
+  $("#profInfo").innerHTML = `
+    <p><b>Nama:</b> ${esc(me.nama)}</p>
+    <p><b>Email:</b> ${esc(me.email)}</p>
+    <p><b>Role:</b> <span class="badge ${esc(me.role)}">${esc(me.peran)}</span></p>
+    <p><b>Deskripsi:</b> ${esc(me.deskripsi())}</p>
+    <p><b>Hak akses:</b> ${me.hakAkses().map(esc).join(", ")}</p>`;
+  $("#pnama").value = me.nama; $("#ppass").value = me.password; $("#pmsg").textContent = "";
+}
+$("#pform").onsubmit = e => {
+  e.preventDefault();
+  repo.ubah(me.id, { nama: $("#pnama").value.trim(), password: $("#ppass").value });
+  renderProfile(); $("#pmsg").textContent = " Tersimpan ✓";
+};
+
+show(me ? "users" : "login");
+</script>
+</body>
+</html>
